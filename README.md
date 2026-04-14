@@ -24,6 +24,7 @@ Transforms `signal-2025-11-19-14-23-47-588.jpg` into `cat-sleeping-on-keyboard.j
 Batch-converts `.heic` and `.heif` images from a directory into PNGs.
 
 Transforms `IMG_1234.HEIC` into `outputs/IMG_1234.png`.
+Keeps a global history in `~/.config/heif-to-png/history.json` so reruns can skip files that were already converted while their previous PNG still exists.
 
 ## Features
 
@@ -31,7 +32,7 @@ Transforms `IMG_1234.HEIC` into `outputs/IMG_1234.png`.
 - Generates descriptive, kebab-case filenames
 - `screenshot-renamer`: preserves date/time prefix, batch processes directories, analyzes up to 3 screenshots concurrently, and renames each screenshot as soon as its suggestion returns
 - `image-renamer`: single file mode, outputs copy-pasteable `mv` command in dry-run
-- `heif-to-png`: macOS-only batch conversion using the built-in `sips` command, with dry-run and collision handling
+- `heif-to-png`: macOS-only batch conversion using the built-in `sips` command, with dry-run, collision handling, and global duplicate detection via history
 - Keeps history logs at `~/.config/{screenshot,image}-renamer/history.txt`
 
 ## Installation
@@ -144,6 +145,8 @@ heif-to-png --overwrite
 | `--overwrite`    | Overwrite existing target PNGs instead of creating `-1`, `-2`, ... suffixes |
 | `--help`         | Show help message                                                           |
 | `--version`      | Show version                                                                |
+
+`heif-to-png` keeps a global conversion history in `~/.config/heif-to-png/history.json`. If the same source image is seen again and its previously generated PNG still exists, it is skipped. If that old PNG is gone, the image is converted again.
 
 ## Development
 

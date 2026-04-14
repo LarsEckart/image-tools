@@ -1,14 +1,16 @@
 #!/usr/bin/env bun
 
-const VERSION = "1.4.0";
+const VERSION = "1.5.0";
 
+import { createHash } from "node:crypto";
 import { mkdir, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, extname, join, resolve } from "node:path";
+import { basename, dirname, extname, join, resolve } from "node:path";
 
 const DEFAULT_INPUT_DIRECTORY = "~/Downloads";
 const DEFAULT_OUTPUT_DIRECTORY = "./outputs";
 const PNG_EXTENSION = ".png";
+const HISTORY_FILE = join(homedir(), ".config", "heif-to-png", "history.json");
 const SUPPORTED_EXTENSIONS = [".heic", ".heif"] as const;
 
 type ConversionSummary = {
@@ -24,6 +26,14 @@ type CliOptions = {
   dryRun: boolean;
   overwrite: boolean;
 };
+
+type ConversionHistoryEntry = {
+  sourceFilename: string;
+  outputPath: string;
+  convertedAt: string;
+};
+
+type ConversionHistory = Record<string, ConversionHistoryEntry>;
 
 type ConvertFile = (inputPath: string, outputPath: string) => Promise<void>;
 
@@ -73,6 +83,13 @@ export function formatSummary(summary: ConversionSummary, dryRun: boolean): stri
   return `Summary: found ${summary.found} / ${convertedLabel} ${summary.converted} / skipped ${summary.skipped} / failed ${summary.failed}`;
 }
 
+export function shouldSkipAlreadyConverted(
+  historyEntry: ConversionHistoryEntry | undefined,
+  outputStillExists: boolean
+): boolean {
+  return historyEntry !== undefined && outputStillExists;
+}
+
 export function expandHomeDirectory(path: string): string {
   if (path === "~") {
     return homedir();
@@ -102,6 +119,7 @@ Options:
 Notes:
   - macOS only
   - Non-recursive: only files directly inside the input directory are processed
+  - Uses a global history at ~/.config/heif-to-png/history.json to skip already converted files while their previous PNG still exists
 
 Examples:
   heif-to-png
@@ -190,6 +208,35 @@ async function readDirectoryNames(directoryPath: string): Promise<string[]> {
   }
 }
 
+async function loadHistory(): Promise<ConversionHistory> {
+  const historyFile = Bun.file(HISTORY_FILE);
+  if (!(await historyFile.exists())) {
+    return {};
+  }
+
+  const historyText = await historyFile.text();
+  if (!historyText.trim()) {
+    return {};
+  }
+
+  const parsed = JSON.parse(historyText);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Invalid history file: ${HISTORY_FILE}`);
+  }
+
+  return parsed as ConversionHistory;
+}
+
+async function saveHistory(history: ConversionHistory): Promise<void> {
+  await mkdir(dirname(HISTORY_FILE), { recursive: true });
+  await Bun.write(HISTORY_FILE, `${JSON.stringify(history, null, 2)}\n`);
+}
+
+async function getFileHash(filePath: string): Promise<string> {
+  const fileBuffer = await Bun.file(filePath).arrayBuffer();
+  return createHash("sha256").update(Buffer.from(fileBuffer)).digest("hex");
+}
+
 export async function convertHeifToPngWithSips(
   inputPath: string,
   outputPath: string
@@ -236,6 +283,7 @@ async function processDirectory(
     return summary;
   }
 
+  const history = await loadHistory();
   const reservedNames = new Set(await readDirectoryNames(options.outputDirectory));
 
   if (!options.dryRun) {
@@ -243,8 +291,20 @@ async function processDirectory(
   }
 
   for (const sourceFile of sourceFiles) {
-    const outputFilename = getTargetOutputFilename(sourceFile, reservedNames, options.overwrite);
     const inputPath = join(options.inputDirectory, sourceFile);
+    const sourceHash = await getFileHash(inputPath);
+    const historyEntry = history[sourceHash];
+    const outputStillExists = historyEntry
+      ? await Bun.file(historyEntry.outputPath).exists()
+      : false;
+
+    if (shouldSkipAlreadyConverted(historyEntry, outputStillExists)) {
+      summary.skipped++;
+      console.log(`Skipping ${sourceFile} -> already converted to ${historyEntry.outputPath}`);
+      continue;
+    }
+
+    const outputFilename = getTargetOutputFilename(sourceFile, reservedNames, options.overwrite);
     const outputPath = join(options.outputDirectory, outputFilename);
 
     try {
@@ -253,6 +313,12 @@ async function processDirectory(
       } else {
         console.log(`Converting ${sourceFile} -> ${outputFilename}`);
         await convertFile(inputPath, outputPath);
+        history[sourceHash] = {
+          sourceFilename: sourceFile,
+          outputPath,
+          convertedAt: new Date().toISOString(),
+        };
+        await saveHistory(history);
       }
 
       summary.converted++;
