@@ -12,7 +12,7 @@ NC='\033[0m' # No Color
 # Uninstall mode
 if [[ "$1" == "--uninstall" ]]; then
     removed=0
-    for binary in screenshot-renamer image-renamer; do
+    for binary in screenshot-renamer image-renamer heif-to-png; do
         if [[ -f "$INSTALL_DIR/$binary" ]]; then
             rm "$INSTALL_DIR/$binary"
             echo -e "${GREEN}✓ Uninstalled $binary from $INSTALL_DIR${NC}"
@@ -42,14 +42,17 @@ bun install
 echo "🔨 Building native binaries..."
 bun build --compile --minify rename-screenshots.ts --outfile screenshot-renamer
 bun build --compile --minify image-renamer.ts --outfile image-renamer
+bun build --compile --minify heif-to-png.ts --outfile heif-to-png
 
 echo "📁 Installing to $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
 mv screenshot-renamer "$INSTALL_DIR/"
 mv image-renamer "$INSTALL_DIR/"
+mv heif-to-png "$INSTALL_DIR/"
 
 echo -e "${GREEN}✓ Installed screenshot-renamer to $INSTALL_DIR${NC}"
 echo -e "${GREEN}✓ Installed image-renamer to $INSTALL_DIR${NC}"
+echo -e "${GREEN}✓ Installed heif-to-png to $INSTALL_DIR${NC}"
 
 # Check if INSTALL_DIR is in PATH
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
@@ -66,8 +69,13 @@ echo ""
 echo "Usage:"
 echo "  screenshot-renamer [--dry-run] [--days N] [folder]"
 echo "  image-renamer [--dry-run] <image-file>"
+echo "  heif-to-png [--input DIR] [--output DIR] [--dry-run] [--overwrite]"
 echo ""
 echo "Auth options:"
 echo "  - Preferred: Pi openai-codex auth in ~/.pi/agent/auth.json"
 echo "  - Fallback:  OPENROUTER_API_KEY for GPT-5.4 mini"
 echo "  - Fallback:  OPENAI_API_KEY for GPT-5 mini"
+echo ""
+echo "heif-to-png notes:"
+echo "  - macOS only"
+echo "  - Uses the built-in sips command"

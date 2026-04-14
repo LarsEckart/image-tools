@@ -2,8 +2,8 @@
 
 [![Certified Shovelware](https://justin.searls.co/img/shovelware.svg)](https://justin.searls.co/shovelware/)
 
-Uses the published `@mariozechner/pi-ai` package to automatically rename images with descriptive names.
-Defaults to GPT-5.4 mini for filename suggestions when Pi auth or OpenRouter auth is available.
+This repo contains Bun/TypeScript CLI tools for renaming images and converting HEIF files.
+The AI-powered renamers use the published `@mariozechner/pi-ai` package and default to GPT-5.4 mini for filename suggestions when Pi auth or OpenRouter auth is available.
 
 ## Tools
 
@@ -19,12 +19,19 @@ Renames a single image file (any source, not just screenshots).
 
 Transforms `signal-2025-11-19-14-23-47-588.jpg` into `cat-sleeping-on-keyboard.jpg`.
 
+### heif-to-png
+
+Batch-converts `.heic` and `.heif` images from a directory into PNGs.
+
+Transforms `IMG_1234.HEIC` into `outputs/IMG_1234.png`.
+
 ## Features
 
 - Analyzes image content using GPT vision models
 - Generates descriptive, kebab-case filenames
 - `screenshot-renamer`: preserves date/time prefix, batch processes directories, analyzes up to 3 screenshots concurrently, and renames each screenshot as soon as its suggestion returns
 - `image-renamer`: single file mode, outputs copy-pasteable `mv` command in dry-run
+- `heif-to-png`: macOS-only batch conversion using the built-in `sips` command, with dry-run and collision handling
 - Keeps history logs at `~/.config/{screenshot,image}-renamer/history.txt`
 
 ## Installation
@@ -32,9 +39,11 @@ Transforms `signal-2025-11-19-14-23-47-588.jpg` into `cat-sleeping-on-keyboard.j
 ### Prerequisites
 
 - [Bun](https://bun.sh) runtime
-- Preferred: existing Pi `openai-codex` auth in `~/.pi/agent/auth.json`
-- Or: `OPENROUTER_API_KEY` for exact GPT-5.4 mini API-key access
-- Or: `OPENAI_API_KEY` for GPT-5 mini fallback
+- For `heif-to-png`: macOS with the built-in `sips` command
+- For the AI renamers:
+  - Preferred: existing Pi `openai-codex` auth in `~/.pi/agent/auth.json`
+  - Or: `OPENROUTER_API_KEY` for exact GPT-5.4 mini API-key access
+  - Or: `OPENAI_API_KEY` for GPT-5 mini fallback
 
 ### Install
 
@@ -109,6 +118,33 @@ image-renamer --dry-run ~/Downloads/IMG_20231015_123456.jpg
 
 Supported formats: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`
 
+### heif-to-png
+
+> macOS only
+
+```bash
+# Convert HEIF images from ~/Downloads into ./outputs
+heif-to-png
+
+# Use explicit directories
+heif-to-png --input ~/Downloads --output ./outputs
+
+# Preview without converting
+heif-to-png --dry-run
+
+# Overwrite existing PNGs instead of creating suffixed names
+heif-to-png --overwrite
+```
+
+| Option           | Description                                                                 |
+| ---------------- | --------------------------------------------------------------------------- |
+| `--input <dir>`  | Input directory to scan (default: `~/Downloads`)                            |
+| `--output <dir>` | Output directory for PNGs (default: `./outputs`)                            |
+| `--dry-run`      | Show what would happen without converting                                   |
+| `--overwrite`    | Overwrite existing target PNGs instead of creating `-1`, `-2`, ... suffixes |
+| `--help`         | Show help message                                                           |
+| `--version`      | Show version                                                                |
+
 ## Development
 
 ### Setup
@@ -125,10 +161,12 @@ bun install
 # Run without building
 bun rename-screenshots.ts ~/Desktop
 bun image-renamer.ts ~/Downloads/some-image.jpg
+bun heif-to-png.ts --input ~/Downloads --output ./outputs
 
 # Dry run
 bun rename-screenshots.ts --dry-run ~/Desktop
 bun image-renamer.ts --dry-run ~/Downloads/some-image.jpg
+bun heif-to-png.ts --dry-run
 ```
 
 ### Test
@@ -149,10 +187,12 @@ bunx oxfmt --write .
 
 1. **screenshot-renamer**: Scans directory for PNGs matching macOS screenshot pattern (last N days)
 2. **image-renamer**: Takes a single image file as input
-3. Sends image to GPT-5.4 mini via Pi auth or API-key fallback using `@mariozechner/pi-ai`
-4. `screenshot-renamer` analyzes up to 3 screenshots at a time and renames each screenshot as soon as its suggestion is ready
-5. Renames the file (screenshot-renamer preserves date/time prefix)
-6. Logs all renames to history file
+3. **heif-to-png**: Scans one directory level for `.heic` / `.heif` files and converts each one with `sips`
+4. The AI renamers send images to GPT-5.4 mini via Pi auth or API-key fallback using `@mariozechner/pi-ai`
+5. `screenshot-renamer` analyzes up to 3 screenshots at a time and renames each screenshot as soon as its suggestion is ready
+6. The renamers rename files in place (screenshot-renamer preserves date/time prefix)
+7. `heif-to-png` writes PNG copies to the output directory and leaves source files untouched
+8. The renamers log all renames to history files
 
 ## License
 
