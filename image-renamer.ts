@@ -11,6 +11,7 @@ import {
   suggestNameFromImage,
   type SuggestionAuth,
 } from "./llm";
+import { print, printError } from "./cli-output";
 
 const SUPPORTED_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp"];
 const HISTORY_FILE = join(homedir(), ".config", "image-renamer", "history.txt");
@@ -26,10 +27,10 @@ type ImageMediaType = "image/png" | "image/jpeg" | "image/gif" | "image/webp";
 
 function getImageMediaType(ext: string): ImageMediaType {
   const types: Record<string, ImageMediaType> = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
     ".gif": "image/gif",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".png": "image/png",
     ".webp": "image/webp",
   };
   return types[ext.toLowerCase()] || "image/png";
@@ -39,9 +40,9 @@ export function sanitizeFilename(name: string): string {
   return name
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
+    .replaceAll(/[^a-z0-9-]/g, "-")
+    .replaceAll(/-+/g, "-")
+    .replaceAll(/^-|-$/g, "")
     .slice(0, 50);
 }
 
@@ -82,8 +83,8 @@ async function processImage(imagePath: string, suggestionAuth: SuggestionAuth, d
 
   // Validate file extension
   if (!SUPPORTED_EXTENSIONS.includes(ext)) {
-    console.error(`❌ Unsupported file type: ${ext}`);
-    console.error(`   Supported: ${SUPPORTED_EXTENSIONS.join(", ")}`);
+    printError(`❌ Unsupported file type: ${ext}`);
+    printError(`   Supported: ${SUPPORTED_EXTENSIONS.join(", ")}`);
     process.exit(1);
   }
 
@@ -91,15 +92,15 @@ async function processImage(imagePath: string, suggestionAuth: SuggestionAuth, d
   try {
     await stat(imagePath);
   } catch {
-    console.error(`❌ File not found: ${imagePath}`);
+    printError(`❌ File not found: ${imagePath}`);
     process.exit(1);
   }
 
-  console.log(`🖼️  Processing: ${currentName}`);
+  print(`🖼️  Processing: ${currentName}`);
 
   const suggestedName = await suggestName(imagePath, suggestionAuth);
   if (!suggestedName) {
-    console.error("   ❌ Could not get suggestion from API");
+    printError("   ❌ Could not get suggestion from API");
     process.exit(1);
   }
 
@@ -107,7 +108,7 @@ async function processImage(imagePath: string, suggestionAuth: SuggestionAuth, d
   const newPath = join(dir, newFilename);
 
   if (newFilename === currentName) {
-    console.log("   ✓ Already has a good name");
+    print("   ✓ Already has a good name");
     return;
   }
 
@@ -122,17 +123,17 @@ async function processImage(imagePath: string, suggestionAuth: SuggestionAuth, d
   }
 
   if (dryRun) {
-    console.log(`   → Would rename to: ${finalName}\n`);
-    console.log(`mv ${JSON.stringify(imagePath)} ${JSON.stringify(finalPath)}`);
+    print(`   → Would rename to: ${finalName}\n`);
+    print(`mv ${JSON.stringify(imagePath)} ${JSON.stringify(finalPath)}`);
   } else {
     await rename(imagePath, finalPath);
     await logRename(imagePath, finalPath);
-    console.log(`   ✅ Renamed to: ${finalName}`);
+    print(`   ✅ Renamed to: ${finalName}`);
   }
 }
 
 function showHelp() {
-  console.log(`
+  print(`
 Image Renamer v${VERSION} - Uses GPT vision models to give images descriptive names
 
 Usage: image-renamer [options] <image>
@@ -161,7 +162,7 @@ if (import.meta.main) {
   const dryRun = args.includes("--dry-run") || args.includes("-n");
 
   if (args.includes("--version") || args.includes("-v")) {
-    console.log(`image-renamer ${VERSION}`);
+    print(`image-renamer ${VERSION}`);
     process.exit(0);
   }
 
@@ -174,7 +175,7 @@ if (import.meta.main) {
   const imagePath = args.find((arg) => !arg.startsWith("-"));
 
   if (!imagePath) {
-    console.error("❌ Please provide an image file to rename\n");
+    printError("❌ Please provide an image file to rename\n");
     showHelp();
     process.exit(1);
   }
@@ -182,7 +183,7 @@ if (import.meta.main) {
   try {
     const suggestionAuth = await resolveSuggestionAuth();
 
-    console.log(
+    print(
       dryRun
         ? `🔍 DRY RUN MODE v${VERSION} - file will not be renamed\n`
         : `🚀 Starting image renamer v${VERSION}...\n`
@@ -190,7 +191,7 @@ if (import.meta.main) {
 
     await processImage(imagePath, suggestionAuth, dryRun);
   } catch (error) {
-    console.error(`❌ ${error instanceof Error ? error.message : String(error)}`);
+    printError(`❌ ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
   }
 }

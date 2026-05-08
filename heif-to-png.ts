@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
+import { print, printError } from "./cli-output";
 
 const DEFAULT_INPUT_DIRECTORY = "~/Downloads";
 const DEFAULT_OUTPUT_DIRECTORY = "./outputs";
@@ -14,23 +15,23 @@ const HISTORY_FILE = join(homedir(), ".config", "heif-to-png", "history.json");
 const SUPPORTED_EXTENSIONS = [".heic", ".heif"] as const;
 
 type ConversionSummary = {
-  found: number;
   converted: number;
-  skipped: number;
   failed: number;
+  found: number;
+  skipped: number;
 };
 
 type CliOptions = {
+  dryRun: boolean;
   inputDirectory: string;
   outputDirectory: string;
-  dryRun: boolean;
   overwrite: boolean;
 };
 
 type ConversionHistoryEntry = {
-  sourceFilename: string;
-  outputPath: string;
   convertedAt: string;
+  outputPath: string;
+  sourceFilename: string;
 };
 
 type ConversionHistory = Record<string, ConversionHistoryEntry>;
@@ -103,7 +104,7 @@ export function expandHomeDirectory(path: string): string {
 }
 
 function showHelp() {
-  console.log(`
+  print(`
 HEIF to PNG v${VERSION} - Batch-convert HEIF images to PNG with macOS sips
 
 Usage: heif-to-png [options]
@@ -129,7 +130,7 @@ Examples:
 `);
 }
 
-function parseCliArguments(args: string[]): CliOptions {
+function parseCliArguments(args: Array<string>): CliOptions {
   let inputDirectory = DEFAULT_INPUT_DIRECTORY;
   let outputDirectory = DEFAULT_OUTPUT_DIRECTORY;
   let dryRun = false;
@@ -172,9 +173,9 @@ function parseCliArguments(args: string[]): CliOptions {
   }
 
   return {
+    dryRun,
     inputDirectory: resolve(expandHomeDirectory(inputDirectory)),
     outputDirectory: resolve(expandHomeDirectory(outputDirectory)),
-    dryRun,
     overwrite,
   };
 }
@@ -196,7 +197,7 @@ async function assertDirectoryExists(directoryPath: string, label: string): Prom
   }
 }
 
-async function readDirectoryNames(directoryPath: string): Promise<string[]> {
+async function readDirectoryNames(directoryPath: string): Promise<Array<string>> {
   try {
     return await readdir(directoryPath);
   } catch (error) {
@@ -244,8 +245,8 @@ export async function convertHeifToPngWithSips(
   assertMacOS();
 
   const processResult = Bun.spawn(["sips", "-s", "format", "png", inputPath, "--out", outputPath], {
-    stdout: "pipe",
     stderr: "pipe",
+    stdout: "pipe",
   });
 
   const exitCode = await processResult.exited;
@@ -272,14 +273,14 @@ async function processDirectory(
     .toSorted((left, right) => left.localeCompare(right));
 
   const summary: ConversionSummary = {
-    found: sourceFiles.length,
     converted: 0,
-    skipped: 0,
     failed: 0,
+    found: sourceFiles.length,
+    skipped: 0,
   };
 
   if (sourceFiles.length === 0) {
-    console.log(formatSummary(summary, options.dryRun));
+    print(formatSummary(summary, options.dryRun));
     return summary;
   }
 
@@ -298,9 +299,9 @@ async function processDirectory(
       ? await Bun.file(historyEntry.outputPath).exists()
       : false;
 
-    if (shouldSkipAlreadyConverted(historyEntry, outputStillExists)) {
+    if (historyEntry && shouldSkipAlreadyConverted(historyEntry, outputStillExists)) {
       summary.skipped++;
-      console.log(`Skipping ${sourceFile} -> already converted to ${historyEntry.outputPath}`);
+      print(`Skipping ${sourceFile} -> already converted to ${historyEntry.outputPath}`);
       continue;
     }
 
@@ -309,14 +310,14 @@ async function processDirectory(
 
     try {
       if (options.dryRun) {
-        console.log(`Would convert ${sourceFile} -> ${outputFilename}`);
+        print(`Would convert ${sourceFile} -> ${outputFilename}`);
       } else {
-        console.log(`Converting ${sourceFile} -> ${outputFilename}`);
+        print(`Converting ${sourceFile} -> ${outputFilename}`);
         await convertFile(inputPath, outputPath);
         history[sourceHash] = {
-          sourceFilename: sourceFile,
-          outputPath,
           convertedAt: new Date().toISOString(),
+          outputPath,
+          sourceFilename: sourceFile,
         };
         await saveHistory(history);
       }
@@ -327,11 +328,11 @@ async function processDirectory(
       }
     } catch (error) {
       summary.failed++;
-      console.error(`❌ Failed ${sourceFile}: ${formatErrorMessage(error)}`);
+      printError(`❌ Failed ${sourceFile}: ${formatErrorMessage(error)}`);
     }
   }
 
-  console.log(formatSummary(summary, options.dryRun));
+  print(formatSummary(summary, options.dryRun));
   return summary;
 }
 
@@ -340,7 +341,7 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
 
   if (args.includes("--version")) {
-    console.log(`heif-to-png ${VERSION}`);
+    print(`heif-to-png ${VERSION}`);
     process.exit(0);
   }
 
@@ -353,18 +354,18 @@ if (import.meta.main) {
     assertMacOS();
     const options = parseCliArguments(args);
 
-    console.log(
+    print(
       options.dryRun
         ? `🔍 DRY RUN MODE v${VERSION} - no files will be converted\n`
         : `🚀 Starting heif-to-png v${VERSION}...\n`
     );
-    console.log(`📁 Input directory: ${options.inputDirectory}`);
-    console.log(`📁 Output directory: ${options.outputDirectory}`);
-    console.log(`✍️  Overwrite mode: ${options.overwrite ? "on" : "off"}\n`);
+    print(`📁 Input directory: ${options.inputDirectory}`);
+    print(`📁 Output directory: ${options.outputDirectory}`);
+    print(`✍️  Overwrite mode: ${options.overwrite ? "on" : "off"}\n`);
 
     await processDirectory(options);
   } catch (error) {
-    console.error(`❌ ${formatErrorMessage(error)}`);
+    printError(`❌ ${formatErrorMessage(error)}`);
     process.exit(1);
   }
 }

@@ -11,6 +11,7 @@ import {
   suggestNameFromImage,
   type SuggestionAuth,
 } from "./llm";
+import { print, printError } from "./cli-output";
 
 const SUPPORTED_EXTENSIONS = [".png"];
 const SCREENSHOTS_DIR = process.cwd();
@@ -29,14 +30,14 @@ type ImageAnalysisResult =
       status: "no-suggestion";
     }
   | {
+      error: unknown;
       image: string;
       status: "error";
-      error: unknown;
     };
 
 type MapWithConcurrencyOptions<T, U> = {
-  onStarted?: (item: T, index: number) => void | Promise<void>;
   onResolved?: (result: U, item: T, index: number) => void | Promise<void>;
+  onStarted?: (item: T, index: number) => void | Promise<void>;
 };
 
 async function logRename(oldPath: string, newPath: string): Promise<void> {
@@ -80,16 +81,16 @@ export function getUniqueFilename(
 }
 
 export async function mapWithConcurrency<T, U>(
-  items: readonly T[],
+  items: ReadonlyArray<T>,
   concurrency: number,
   mapper: (item: T, index: number) => Promise<U>,
   options?: MapWithConcurrencyOptions<T, U>
-): Promise<U[]> {
+): Promise<Array<U>> {
   if (!Number.isInteger(concurrency) || concurrency < 1) {
     throw new Error(`Concurrency must be a positive integer, got ${concurrency}`);
   }
 
-  const results = Array.from({ length: items.length }) as U[];
+  const results = Array.from({ length: items.length }) as Array<U>;
   let nextIndex = 0;
 
   async function worker(): Promise<void> {
@@ -117,7 +118,9 @@ export function isMacOSScreenshot(filename: string): boolean {
 
 export function getDateTimePrefix(filename: string): string {
   const match = filename.match(MACOS_SCREENSHOT_PATTERN);
-  if (!match) throw new Error(`Not a macOS screenshot: ${filename}`);
+  if (!match) {
+    throw new Error(`Not a macOS screenshot: ${filename}`);
+  }
   const date = match[1]!;
   const hour = match[2]!.padStart(2, "0");
   const minute = match[3]!;
@@ -128,9 +131,9 @@ export function sanitizeFilename(name: string): string {
   return name
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
+    .replaceAll(/[^a-z0-9-]/g, "-")
+    .replaceAll(/-+/g, "-")
+    .replaceAll(/^-|-$/g, "")
     .slice(0, 50);
 }
 
@@ -203,9 +206,9 @@ async function analyzeImage(
     };
   } catch (error) {
     return {
+      error,
       image,
       status: "error",
-      error,
     };
   }
 }
@@ -218,15 +221,15 @@ async function handleCompletedAnalysis(
   completedCount: number,
   totalCount: number
 ): Promise<void> {
-  console.log(`🏷️ Renaming (${completedCount}/${totalCount}): ${analysis.image}`);
+  print(`🏷️ Renaming (${completedCount}/${totalCount}): ${analysis.image}`);
 
   if (analysis.status === "error") {
-    console.error(`   ❌ Analysis failed: ${formatErrorMessage(analysis.error)}\n`);
+    printError(`   ❌ Analysis failed: ${formatErrorMessage(analysis.error)}\n`);
     return;
   }
 
   if (analysis.status === "no-suggestion") {
-    console.log("   ⚠️  Could not get suggestion, skipping\n");
+    print("   ⚠️  Could not get suggestion, skipping\n");
     return;
   }
 
@@ -236,7 +239,7 @@ async function handleCompletedAnalysis(
   const newFilename = `${baseFilename}${ext}`;
 
   if (newFilename === analysis.image) {
-    console.log("   ✓ Already has a good name\n");
+    print("   ✓ Already has a good name\n");
     return;
   }
 
@@ -248,17 +251,17 @@ async function handleCompletedAnalysis(
 
   try {
     if (dryRun) {
-      console.log(`   → Would rename to: ${finalName}\n`);
+      print(`   → Would rename to: ${finalName}\n`);
       return;
     }
 
     await rename(imagePath, finalPath);
     await logRename(imagePath, finalPath);
-    console.log(`   ✅ Renamed to: ${finalName}\n`);
+    print(`   ✅ Renamed to: ${finalName}\n`);
   } catch (error) {
     reservedNames.delete(finalName);
     reservedNames.add(analysis.image);
-    console.error(`   ❌ Error: ${formatErrorMessage(error)}\n`);
+    printError(`   ❌ Error: ${formatErrorMessage(error)}\n`);
   }
 }
 
@@ -275,7 +278,7 @@ async function processScreenshots(
   });
 
   // Filter to only files created within the specified number of days
-  const images: string[] = [];
+  const images: Array<string> = [];
   for (const f of candidates) {
     if (await isRecentFile(join(directory, f), days)) {
       images.push(f);
@@ -283,11 +286,11 @@ async function processScreenshots(
   }
 
   if (images.length === 0) {
-    console.log("No images found in", directory);
+    print(`No images found in ${directory}`);
     return;
   }
 
-  console.log(`Found ${images.length} image(s) to process...\n`);
+  print(`Found ${images.length} image(s) to process...\n`);
 
   const reservedNames = new Set(await readdir(directory));
   let completedCount = 0;
@@ -297,9 +300,6 @@ async function processScreenshots(
     ANALYSIS_CONCURRENCY,
     (image) => analyzeImage(directory, image, suggestionAuth),
     {
-      onStarted: (image, index) => {
-        console.log(`🔍 Analyzing (${index + 1}/${images.length}): ${image}`);
-      },
       onResolved: async (analysis) => {
         completedCount++;
         await handleCompletedAnalysis(
@@ -310,6 +310,9 @@ async function processScreenshots(
           completedCount,
           images.length
         );
+      },
+      onStarted: (image, index) => {
+        print(`🔍 Analyzing (${index + 1}/${images.length}): ${image}`);
       },
     }
   );
@@ -323,33 +326,40 @@ if (import.meta.main) {
   // Parse --days flag
   let days = DEFAULT_DAYS;
   const daysIndex = args.findIndex((arg) => arg === "--days" || arg === "-d");
-  if (daysIndex !== -1 && args[daysIndex + 1]) {
-    const parsedDays = parseInt(args[daysIndex + 1], 10);
-    if (isNaN(parsedDays) || parsedDays < 1) {
-      console.error("❌ --days must be a positive integer");
-      process.exit(1);
+  if (daysIndex !== -1) {
+    const daysArgument = args[daysIndex + 1];
+    if (daysArgument) {
+      const parsedDays = Number.parseInt(daysArgument, 10);
+      if (Number.isNaN(parsedDays) || parsedDays < 1) {
+        printError("❌ --days must be a positive integer");
+        process.exit(1);
+      }
+      days = parsedDays;
     }
-    days = parsedDays;
   }
 
   // Parse folder argument (first non-flag argument, excluding --days value)
   const flagsWithValues = new Set(["--days", "-d"]);
   const folderArg = args.find((arg, i) => {
-    if (arg.startsWith("-")) return false;
+    if (arg.startsWith("-")) {
+      return false;
+    }
     // Check if previous arg was a flag that takes a value
     const prevArg = args[i - 1];
-    if (prevArg && flagsWithValues.has(prevArg)) return false;
+    if (prevArg && flagsWithValues.has(prevArg)) {
+      return false;
+    }
     return true;
   });
   const targetDir = folderArg ? folderArg : SCREENSHOTS_DIR;
 
   if (args.includes("--version") || args.includes("-v")) {
-    console.log(`screenshot-renamer ${VERSION}`);
+    print(`screenshot-renamer ${VERSION}`);
     process.exit(0);
   }
 
   if (args.includes("--help") || args.includes("-h")) {
-    console.log(`
+    print(`
 Screenshot Renamer v${VERSION} - Uses GPT vision models to give screenshots descriptive names
 
 Usage: screenshot-renamer [options] [folder]
@@ -371,17 +381,17 @@ ${AUTHENTICATION_HELP_TEXT}
   try {
     const suggestionAuth = await resolveSuggestionAuth();
 
-    console.log(
+    print(
       dryRun
         ? `🔍 DRY RUN MODE v${VERSION} - no files will be renamed\n`
         : `🚀 Starting screenshot renamer v${VERSION}...\n`
     );
-    console.log(`📁 Target directory: ${targetDir}`);
-    console.log(`📅 Looking back: ${days} day${days === 1 ? "" : "s"}\n`);
-    console.log(`⚡ LLM analysis concurrency: ${ANALYSIS_CONCURRENCY}\n`);
+    print(`📁 Target directory: ${targetDir}`);
+    print(`📅 Looking back: ${days} day${days === 1 ? "" : "s"}\n`);
+    print(`⚡ LLM analysis concurrency: ${ANALYSIS_CONCURRENCY}\n`);
     await processScreenshots(targetDir, suggestionAuth, dryRun, days);
   } catch (error) {
-    console.error(`❌ ${formatErrorMessage(error)}`);
+    printError(`❌ ${formatErrorMessage(error)}`);
     process.exit(1);
   }
 }

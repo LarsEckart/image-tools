@@ -60,9 +60,9 @@ describe("shouldSkipAlreadyConverted", () => {
     expect(
       shouldSkipAlreadyConverted(
         {
-          sourceFilename: "IMG_1234.HEIC",
-          outputPath: "/tmp/outputs/IMG_1234.png",
           convertedAt: "2026-04-14T00:00:00.000Z",
+          outputPath: "/tmp/outputs/IMG_1234.png",
+          sourceFilename: "IMG_1234.HEIC",
         },
         true
       )
@@ -73,9 +73,9 @@ describe("shouldSkipAlreadyConverted", () => {
     expect(
       shouldSkipAlreadyConverted(
         {
-          sourceFilename: "IMG_1234.HEIC",
-          outputPath: "/tmp/outputs/IMG_1234.png",
           convertedAt: "2026-04-14T00:00:00.000Z",
+          outputPath: "/tmp/outputs/IMG_1234.png",
+          sourceFilename: "IMG_1234.HEIC",
         },
         false
       )

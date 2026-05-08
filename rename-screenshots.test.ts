@@ -179,13 +179,13 @@ describe("mapWithConcurrency", () => {
       Promise.withResolvers<void>(),
       Promise.withResolvers<void>(),
     ];
-    const completed: string[] = [];
+    const completed: Array<string> = [];
 
     const run = mapWithConcurrency(
       [0, 1, 2],
       3,
       async (item) => {
-        await releases[item].promise;
+        await releases[item]!.promise;
         return `result-${item}`;
       },
       {
@@ -195,15 +195,15 @@ describe("mapWithConcurrency", () => {
       }
     );
 
-    releases[1].resolve();
+    releases[1]!.resolve();
     await Bun.sleep(0);
     expect(completed).toEqual(["result-1"]);
 
-    releases[2].resolve();
+    releases[2]!.resolve();
     await Bun.sleep(0);
     expect(completed).toEqual(["result-1", "result-2"]);
 
-    releases[0].resolve();
+    releases[0]!.resolve();
     await run;
     expect(completed).toEqual(["result-1", "result-2", "result-0"]);
   });

@@ -31,8 +31,8 @@ type OAuthAuthFileEntry = OAuthCredentials & { type?: string };
 type OAuthAuthFile = Record<string, OAuthAuthFileEntry>;
 
 type ResolvedAuth = {
-  model: Model<Api>;
   apiKey?: string;
+  model: Model<Api>;
 };
 
 export type SuggestionAuth = ResolvedAuth;
@@ -101,8 +101,8 @@ async function resolvePiCodexAuth(): Promise<ResolvedAuth | null> {
   }
 
   return {
-    model: OPENAI_CODEX_MODEL,
     apiKey: refreshed.apiKey,
+    model: OPENAI_CODEX_MODEL,
   };
 }
 
@@ -121,16 +121,16 @@ export async function resolveSuggestionAuth(): Promise<SuggestionAuth> {
   const openRouterApiKey = process.env.OPENROUTER_API_KEY;
   if (openRouterApiKey) {
     return {
-      model: OPENROUTER_MODEL,
       apiKey: openRouterApiKey,
+      model: OPENROUTER_MODEL,
     };
   }
 
   const openAIApiKey = process.env.OPENAI_API_KEY;
   if (openAIApiKey) {
     return {
-      model: OPENAI_MODEL,
       apiKey: openAIApiKey,
+      model: OPENAI_MODEL,
     };
   }
 
@@ -164,24 +164,24 @@ export async function suggestNameFromImage(
   const response = await complete(
     auth.model,
     {
-      systemPrompt: FILENAME_SUGGESTION_SYSTEM_PROMPT,
       messages: [
         {
-          role: "user",
-          timestamp: Date.now(),
           content: [
             {
-              type: "image",
               data: imageBase64,
               mimeType,
+              type: "image",
             },
             {
-              type: "text",
               text: prompt,
+              type: "text",
             },
           ],
+          role: "user",
+          timestamp: Date.now(),
         },
       ],
+      systemPrompt: FILENAME_SUGGESTION_SYSTEM_PROMPT,
     },
     {
       apiKey: auth.apiKey,
